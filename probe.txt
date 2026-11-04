@@ -1,0 +1,4 @@
+Izhive automation access probe - 2026-11-04T03:39:22Z
+1) add_repo tool: NOT available (ToolSearch "select:mcp__claude-code-remote__add_repo" and "add_repo github repository" found no such tool).
+2) git clone: destination already existed (repo pre-cloned by session at /home/claude/izhive-media); fetch from origin worked.
+3) Branch probe-0339 created, this file committed, push attempted.
