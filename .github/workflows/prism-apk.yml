@@ -1,0 +1,101 @@
+name: prism-apk (temporary)
+
+# Temporary helper: fetch Prism's XAPK from APKPure, merge the split APKs into one
+# test-signed APK, then (on a second push) upload it to Mobile Next storage.
+on:
+  push:
+    branches: [tmp/prism-apk]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick mode
+        id: mode
+        run: |
+          if [ -f upload/put.json ]; then
+            echo "mode=upload" >> "$GITHUB_OUTPUT"
+            echo "runid=$(cat upload/run-id)" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=build" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download XAPK and merge into one APK
+        if: steps.mode.outputs.mode == 'build'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p work && cd work
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
+          ok=0
+          for u in \
+            "https://d.apkpure.com/b/XAPK/com.nahid002345.prismunitconverter?version=latest" \
+            "https://d.apkpure.net/b/XAPK/com.nahid002345.prismunitconverter?version=latest"; do
+            if curl -fL --retry 2 -A "$UA" -o prism.xapk "$u" && unzip -tq prism.xapk >/dev/null 2>&1; then ok=1; break; fi
+          done
+          if [ "$ok" != 1 ]; then
+            echo "::error title=download::XAPK download failed"
+            file prism.xapk || true; head -c 600 prism.xapk || true
+            exit 1
+          fi
+          ls -la prism.xapk
+          unzip -l prism.xapk
+          unzip -p prism.xapk manifest.json 2>/dev/null | head -c 1500 || true; echo
+
+          gh release download -R REAndroid/APKEditor -p 'APKEditor*.jar' -O APKEditor.jar
+          java -jar APKEditor.jar m -i prism.xapk -o merged.apk
+
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)"
+          "$BT/zipalign" -f -p 4 merged.apk aligned.apk
+          keytool -genkeypair -keystore test.jks -alias test -keyalg RSA -keysize 2048 -validity 3650 \
+            -storepass testpass -keypass testpass -dname "CN=Prism Test"
+          "$BT/apksigner" sign --ks test.jks --ks-pass pass:testpass --key-pass pass:testpass \
+            --out prism-merged.apk aligned.apk
+          "$BT/apksigner" verify prism-merged.apk
+
+          "$BT/aapt2" dump badging prism-merged.apk | grep -E "^(package|native-code|sdkVersion|targetSdkVersion)" || true
+          "$BT/aapt2" dump xmltree --file AndroidManifest.xml prism-merged.apk | grep -iE "extractNativeLibs|isSplitRequired|splits.required" || true
+          unzip -v prism-merged.apk | grep -E "\.so$" || true
+
+          SHA=$(sha256sum prism-merged.apk | cut -d' ' -f1)
+          SIZE=$(stat -c %s prism-merged.apk)
+          echo "::notice title=apkinfo::sha256=$SHA size=$SIZE"
+
+      - uses: actions/upload-artifact@v4
+        if: steps.mode.outputs.mode == 'build'
+        with:
+          name: prism-merged-apk
+          path: work/prism-merged.apk
+          retention-days: 1
+
+      - uses: actions/download-artifact@v4
+        if: steps.mode.outputs.mode == 'upload'
+        with:
+          name: prism-merged-apk
+          run-id: ${{ steps.mode.outputs.runid }}
+          github-token: ${{ github.token }}
+
+      - name: Upload APK to Mobile Next
+        if: steps.mode.outputs.mode == 'upload'
+        run: |
+          set -euo pipefail
+          URL=$(jq -r .url upload/put.json)
+          args=()
+          while IFS= read -r h; do args+=(-H "$h"); done < <(
+            jq -r '(.headers // {}) | to_entries[]
+                   | select((.key | ascii_downcase) as $k | ($k != "host" and $k != "content-length"))
+                   | "\(.key): \(.value)"' upload/put.json)
+          echo "expected sha256: $(jq -r .sha256 upload/put.json)"
+          sha256sum prism-merged.apk
+          code=$(curl -sS -o resp.txt -w '%{http_code}' "${args[@]}" --upload-file prism-merged.apk "$URL")
+          echo "HTTP $code"; cat resp.txt || true
+          echo "::notice title=upload::HTTP $code"
+          [ "$code" -ge 200 ] && [ "$code" -lt 300 ]
