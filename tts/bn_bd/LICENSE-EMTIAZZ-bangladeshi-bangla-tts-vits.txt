@@ -1,0 +1,5 @@
+Bangladeshi Bangla TTS (VITS) by EMTIAZZ - https://huggingface.co/EMTIAZZ/bangladeshi-bangla-tts-vits
+(revision 6f4b22c88c2fcc74805aa54c5f2c5f612d463d08). Licensed under the Apache License 2.0.
+Fine-tuned from Coqui TTS tts_models/bn/custom/vits-female (Apache 2.0).
+This folder holds the same weights exported to ONNX (generator only, no changes to the weights)
+for offline CPU inference with onnxruntime. Full license text: https://www.apache.org/licenses/LICENSE-2.0
