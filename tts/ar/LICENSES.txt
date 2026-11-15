@@ -1,0 +1,7 @@
+SILMA TTS v1 by SILMA AI - https://huggingface.co/silma-ai/silma-tts (revision 226dd7a65cadf51f9a6dbe3953fc89003b3844d5).
+Model weights: Apache License 2.0. Code: MIT. Built on F5-TTS. The reference voice used (ref_mel.npy) is the
+sample voice shipped in SILMA's own package (silma_tts/infer/ref_audio_samples/ar.ref.24k.wav).
+Vocos mel-24khz by charactr - https://huggingface.co/charactr/vocos-mel-24khz (revision 0feb3fdd929bcd6649e0e7c5a688cf7dd012ef21), MIT License.
+Files here are ONNX exports of those weights (silma_text.onnx = text embedding, silma_dit.onnx = one
+classifier-free-guided flow step, vocos.onnx = vocoder up to the iSTFT) for CPU inference with onnxruntime.
+Please disclose that the Arabic reading is AI-generated.
